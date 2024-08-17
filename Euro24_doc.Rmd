@@ -1,0 +1,280 @@
+---
+title: "Euro 2024 Players Analysis"
+format: html
+editor: visual
+---
+
+# Load Packages
+
+```{r  setup , echo=TRUE,warning=FALSE,message=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(cluster)
+library(plotly)
+library(data.table)
+library(DT)
+library(htmltools)
+
+```
+
+# Set working directory and load data
+
+```{r}
+setwd("C:/Users/hp/Desktop/Dataset")
+euro_24 <- read_csv("euro2024_players.csv")
+euro_24
+```
+
+# View Data
+
+```{r}
+view(euro_24)
+```
+
+# Data Exploration
+```{r}
+glimpse(euro_24)
+class(euro_24)
+summary(euro_24)
+head(euro_24,10)
+tail(euro_24,10)
+
+```
+
+# Data Wrangling
+## Data type conversion
+```{r}
+euro_24$Age <- as.integer(euro_24$Age)
+class(euro_24$Age)
+euro_24$Goals <- as.integer(euro_24$Goals)
+class(euro_24$Goals)
+euro_24 <- euro_24%>% 
+  mutate(across(c(Country, Club, Position), as.factor))
+glimpse(euro_24)
+```
+
+## Handling missing values
+```{r}
+unique(euro_24$Foot)
+missing_foot <- euro_24[is.na(euro_24$Foot),]
+missing_foot
+```
+
+## Replace missing values with the mode
+```{r}
+mode_foot <- as.character(names(sort(table(euro_24$Foot), decreasing = TRUE))[1])
+mode_foot
+(euro_24$Foot[is.na(euro_24$Foot)] <- mode_foot)
+euro_24$Foot <- as.factor(euro_24$Foot)
+```
+
+# Descriptive Statistics
+## Summary statistics for numerical columns
+```{r}
+num_summary <- euro_24 %>% 
+    select_if(is.numeric) %>% 
+    summary()
+num_summary
+```
+## Distribution of categorical variables
+```{r}
+cat_summary <- euro_24 %>% 
+    select_if(is.factor) %>% 
+    summary()
+cat_summary
+```
+
+## Summary statistics for character variable
+```{r}
+char_summary <- euro_24 %>% 
+    select_if(is.character) %>% 
+    summary()
+char_summary
+```
+
+# Demographics
+
+```{r include=FALSE}
+total_players <- nrow(euro_24)
+valueBox(total_players,"Total Players", icon = "fa-users",color = 'pink')
+```
+
+There were a total of `r nrow(euro_24)` Players
+
+The average age of Players was `r round(mean(euro_24$Age, na.rm = TRUE))`
+
+`r round(mean(euro_24$Height, na.rm = TRUE))` was the average height of Players
+
+The total number of countries that participated in the Euro24 was `r euro_24 %>% select(Country) %>% distinct() %>% nrow()`
+
+# Age distribution
+
+```{r include=TRUE}
+p <- ggplot(euro_24, aes(x = Age)) +
+  geom_histogram(binwidth = 1, fill = 'blue', color = 'black') +
+  theme_minimal() +
+  labs(title = "Age Distribution of Players", x = "Age", y = "Count")
+ggplotly(p)
+```
+
+The histogram shows that the majority of players are in their mid-20s, with fewer players at both the younger (15-20 years) and older (30-40 years) ends of the spectrum.
+
+# Distribution by nationality
+
+```{r}
+nationality_dist <-euro_24 %>%
+    select(Country) %>% 
+    count(Country) %>% 
+    arrange(desc(n))
+k <- ggplot(nationality_dist, aes(x = reorder(Country, n), y = n)) +
+  geom_bar(stat = 'identity', fill = 'blue', color = 'black') +
+  theme_minimal() +
+  coord_flip() +
+  labs(title = "Number of Players by Nationality", x = "Nationality", y = "Count")
+ggplotly(k)
+```
+
+Poland had the highest number of players while countries like France and Belgium had the lowest.
+
+# Top scorers
+
+```{r}
+top_scorers <- euro_24 %>%
+  arrange(desc(Goals)) %>%
+  select(Name, Club, Country, Goals) %>%
+  head(10)
+ggplot(top_scorers, aes(x = reorder(Name, Goals), y = Goals, fill = Club)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Top 10 Goal Scorers",
+       x = "Player",
+       y = "Goals",
+       fill = "Club") +
+  theme_minimal()
+```
+
+The bar chart shows the top 10 goal scorers. Cristiano Ronaldo has the highest score, as indicated by the longest bar while Kylian Mbappé, Andriy Yarmolenko, Thomas Müller, and Memphis Depay have shorter bars, indicating lower scores compared.
+
+# Filter the relevant demographic columns
+
+```{r}
+demographics_data <- euro_24 %>% select(Name, Age, Country, Club, Position, Height, Foot, Caps, Goals, MarketValue)
+datatable(demographics_data, 
+          options = list(pageLength = 10, 
+                         searchHighlight = TRUE),
+          filter = 'top')
+```
+
+# Players National Distribution in Pie Chart
+
+```{r}
+pie_chart <- plot_ly(nationality_dist, labels = ~Country, values = ~n, type = 'pie', 
+                     textinfo = 'label+percent', insidetextorientation = 'radial') %>%
+  layout(xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+pie_chart
+```
+
+# Distribution of players according to their dominant foot
+
+```{r}
+foot_distribution <- euro_24 %>%
+  filter(!is.na(Foot)) %>%
+  group_by(Foot) %>%
+  summarise(Count = n()) 
+ggplot(foot_distribution, aes(x = Foot, y = Count, fill = Foot)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Distribution of Players by Dominant Foot",
+       x = "Dominant Foot",
+       y = "Number of Players")
+```
+
+Right-footed players dominate the distribution, with nearly 400 players while “-” category has the least number of players, close to zero.
+
+# Comparative Analysis
+
+## Club with the highest average age
+
+```{r}
+team_age <- euro_24 %>%
+  group_by(Club) %>%
+  summarize(Average_Age = mean(Age, na.rm = TRUE)) %>%
+  arrange(desc(Average_Age))
+top_club <- team_age %>% slice(1)
+top_club
+```
+
+## Club with the highest average goals
+
+```{r}
+team_performance <- euro_24 %>%
+  group_by(Club) %>%
+  summarize(Average_Goals = mean(Goals, na.rm = TRUE)) %>% 
+  arrange(desc(Average_Goals))
+# Display the top team
+top_team <- team_performance[1, ]
+top_team
+```
+
+# Visualization of Clusters
+
+```{r}
+# Scaling Data and Clustering
+num_data <- euro_24 %>%
+  select_if(is.numeric) %>%
+  na.omit()
+num_data_scaled <- scale(num_data) 
+# K-means clustering
+set.seed(123)
+kmeans_result <- kmeans(num_data_scaled, centers = 3, nstart = 25)
+# Add cluster results to the dataset
+euro_24$Cluster <- as.factor(kmeans_result$cluster)
+# Visualize clusters
+k <- ggplot(euro_24, aes(x = Age, y = MarketValue, color = Cluster)) +
+  geom_point(size = 3) +
+  theme_minimal() +
+  labs(title = "Clustering of Players", x = "Age", y = "Market Value (€)")
+ 
+  ggplotly(k)
+```
+
+# Total number of goals scored by players of each country
+
+```{r}
+goals_by_country <- euro_24 %>%
+  group_by(Country) %>%
+  summarise(Total_Goals = sum(Goals))
+ggplot(goals_by_country, aes(x = reorder(Country, -Total_Goals), y = Total_Goals, fill = Country)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Total Number of Goals by Country",
+       x = "Country",
+       y = "Total Goals")
+```
+
+# Total market value of players of each country
+
+```{r}
+market_value_by_country <- euro_24 %>%
+  group_by(Country) %>%
+  summarise(Total_MarketValue = sum(MarketValue))
+ggplot(market_value_by_country, aes(x = reorder(Country, -Total_MarketValue), y = Total_MarketValue, fill = Country)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Total Market Value by Country",
+       x = "Country",
+       y = "Total Market Value (in Euros)")
+```
+
+# Top Goal Scoring Countries
+
+```{r}
+top_goal_scoring_countries <- goals_by_country %>%
+  top_n(10, Total_Goals)
+ggplot(top_goal_scoring_countries, aes(x = reorder(Country, -Total_Goals), y = Total_Goals, fill = Country)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Top 10 Goal Scoring Countries",
+       x = "Country",
+       y = "Total Goals")
+```
