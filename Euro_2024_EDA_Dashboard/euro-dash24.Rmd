@@ -1,0 +1,213 @@
+---
+title: "Euro 2024 Players Analysis"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: row
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(cluster)
+library(plotly)
+library(data.table)
+library(DT)
+getwd()
+setwd("C:/Users/hp/Desktop/Dataset")
+dir()
+euro_24 <- read_csv("euro2024_players.csv")
+euro_24
+view(euro_24)
+
+```
+
+# Demographics
+Row {data-width=650}
+-----------------------------------------------------------------------
+
+### Display key metrics using value boxe
+
+```{r}
+total_players <- nrow(euro_24)
+valueBox(total_players,"Total Players", icon = "fa-users",color = 'pink')
+```
+
+### Average Age
+```{r}
+avg_age <- mean(euro_24$Age, na.rm = TRUE)
+valueBox(round(avg_age, 1),"Average Age", icon = "fa-birthday-cake", color = "green")
+```
+
+### Total Countries
+```{r}
+num_countries <- euro_24 %>%
+  select(Country) %>%
+  distinct() %>%
+  nrow()
+valueBox(num_countries,"Total Countries", icon = "fa-flag", color = "blue")
+```
+
+### Average Height
+```{r}
+avg_height <- mean(euro_24$Height, na.rm = TRUE)
+valueBox(round(avg_height, 1), caption= "Average Height (cm)", icon = "fa-arrows-alt-v", color = "purple")
+
+```
+
+## Row 1 {data-height=50}
+Column {.tabset .tabset-fade data-width=400} 
+-----------------------------------------------------------------------
+
+### Age distribution
+
+```{r fig.height=5}
+p <- ggplot(euro_24, aes(x = Age)) +
+  geom_histogram(binwidth = 1, fill = 'blue', color = 'black') +
+  theme_minimal() +
+  labs(title = "Age Distribution of Players", x = "Age", y = "Count")
+ggplotly(p)
+```
+
+### Distribution by nationality
+
+```{r}
+ nationality_dist <-euro_24 %>%
+    select(Country) %>% 
+    count(Country) %>% 
+    arrange(desc(n))
+l <- ggplot(nationality_dist, aes(x = reorder(Country, n), y = n)) +
+  geom_bar(stat = 'identity', fill = 'blue', color = 'black') +
+  theme_minimal() +
+  coord_flip() +
+  labs(title = "Number of Players by Nationality", x = "Nationality", y = "Count")
+ggplotly(l)
+```
+
+### Top scorers
+```{r}
+top_scorers <- euro_24 %>%
+  arrange(desc(Goals)) %>%
+  select(Name, Club, Country, Goals) %>%
+  head(10)
+ggplot(top_scorers, aes(x = reorder(Name, Goals), y = Goals, fill = Club)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Top 10 Goal Scorers",
+       x = "Player",
+       y = "Goals",
+       fill = "Club") +
+  theme_minimal()
+```
+
+### Filter the relevant demographic columns
+```{r}
+demographics_data <- euro_24 %>% select(Name, Age, Country, Club, Position, Height, Foot, Caps, Goals, MarketValue)
+datatable(demographics_data, 
+          options = list(pageLength = 10, 
+                         searchHighlight = TRUE),
+          filter = 'top')
+
+```
+
+# Comparative Analysis
+## Row {data-width=650}
+### valuebox
+```{r}
+team_age <- euro_24 %>%
+    group_by(Club) %>% 
+    summarize(Average_Age = mean(Age, na.rm = TRUE)) %>% 
+    arrange(desc(Average_Age))
+top_club <- team_age %>% slice(1)
+valueBox(
+  value = round(top_club$Average_Age, 2),
+  caption = paste("Club with the highest average age:", top_club$Club),
+  icon = "fa-birthday-cake",
+  color = "blue"
+)
+```
+### two
+```{r}
+team_performance <- euro_24 %>%
+  group_by(Club) %>%
+  summarize(Average_Goals = mean(Goals, na.rm = TRUE)) %>% 
+  arrange(desc(Average_Goals))
+top_team <- team_performance[1, ]
+valueBox(
+  value = round(top_team$Average_Goals, 2),
+  caption = paste("Club with the highest average goals:",top_team$Club),
+  icon = "fa-futbol-o",
+  color = "blue"
+)
+```
+
+## Row 1 {data-height=50}
+Column {.tabset .tabset-fade data-width=400} 
+-----------------------------------------------------------------------
+
+### Visualization of Clusters
+```{r}
+# Scaling Data and Clustering
+num_data <- euro_24 %>%
+  select_if(is.numeric) %>%
+  na.omit()
+num_data_scaled <- scale(num_data) 
+# K-means clustering
+set.seed(123)
+kmeans_result <- kmeans(num_data_scaled, centers = 3, nstart = 25)
+# Add cluster results to the dataset
+euro_24$Cluster <- as.factor(kmeans_result$cluster)
+# Visualize clusters
+k <- ggplot(euro_24, aes(x = Age, y = MarketValue, color = Cluster)) +
+  geom_point(size = 3) +
+  theme_minimal() +
+  labs(title = "Clustering of Players", x = "Age", y = "Market Value (€)")
+ 
+  ggplotly(k)
+```
+
+### Total number of goals scored by players of each country
+```{r}
+goals_by_country <- euro_24 %>%
+  group_by(Country) %>%
+  summarise(Total_Goals = sum(Goals))
+ggplot(goals_by_country, aes(x = reorder(Country, -Total_Goals), y = Total_Goals, fill = Country)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Total Number of Goals by Country",
+       x = "Country",
+       y = "Total Goals")
+```
+
+### Total market value of players of each country
+```{r}
+market_value_by_country <- euro_24 %>%
+  group_by(Country) %>%
+  summarise(Total_MarketValue = sum(MarketValue))
+ggplot(market_value_by_country, aes(x = reorder(Country, -Total_MarketValue), y = Total_MarketValue, fill = Country)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Total Market Value by Country",
+       x = "Country",
+       y = "Total Market Value (in Euros)")
+```
+
+### Top Goal Scoring Countries
+```{r}
+top_goal_scoring_countries <- goals_by_country %>%
+  top_n(10, Total_Goals)
+ggplot(top_goal_scoring_countries, aes(x = reorder(Country, -Total_Goals), y = Total_Goals, fill = Country)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Top 10 Goal Scoring Countries",
+       x = "Country",
+       y = "Total Goals")
+```
+
+# About
+ **This dashboard presents an in-depth analysis of the players participating in Euro 2024, covering various aspects such as demographics, comparative performance, and financial metrics. Through this analysis, you can explore key statistics like the distribution of players by age, nationality, and club, as well as the market value and goals scored by each country.**
+ 
+Column {data-width=650}
+-----------------------------------------------------------------------
+### **About the author**
+**My name is Brian Juma, a data enthusiast with a keen interest in sports analytics. I specialize in using advanced data analysis techniques to extract insights and create visualizations that help in decision-making. Feel free to connect with me on [LinkedIn](https://www.linkedin.com/in/brianjuma011/), [Github](https://github.com/Brian-Juma) to discuss data, sports, or any other topics of interest.**
+
