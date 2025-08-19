@@ -1,2 +1,2 @@
-*.R linguist-language=R
-*.html linguist-language=HTML
+*.R linguist-detectable=true linguist-language=R
+*.html linguist-detectable=true linguist-language=HTML
